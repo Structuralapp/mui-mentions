@@ -1,8 +1,8 @@
 import { Box, Portal } from '@mui/material';
 import React, { ReactNode } from 'react';
 import Mention from './Mention';
-import { BaseSuggestionData, SuggestionDataSource } from './types';
-import { iterateMentionsMarkup } from './utils/utils';
+import { BaseSuggestionData, DefaultTrigger, SuggestionDataSource } from './types';
+import { getPlainText, iterateMentionsMarkup } from './utils/utils';
 
 interface HighlighterProps<T extends BaseSuggestionData> {
     /** Ref applied to the main container of the highlighter. */
@@ -34,6 +34,9 @@ interface HighlighterProps<T extends BaseSuggestionData> {
 
     /** Whether to use text color highlighting instead of background color. */
     highlightTextColor?: boolean;
+
+    /** Whether to show trigger character in displayed mention text. */
+    showTriggerInDisplay?: boolean;
 }
 
 function Highlighter<T extends BaseSuggestionData>(props: HighlighterProps<T>): ReactNode {
@@ -46,18 +49,74 @@ function Highlighter<T extends BaseSuggestionData>(props: HighlighterProps<T>): 
         dataSources,
         multiline,
         highlightTextColor,
+        showTriggerInDisplay,
     } = props;
     const components: JSX.Element[] = [];
 
-    const handleMention = (_markup: string, index: number, _plainTextIndex: number, id: string, display: string) => {
-        components.push(
-            <Mention
-                key={`${id}-${index}`}
-                display={display}
-                color={props.color}
-                highlightTextColor={highlightTextColor}
-            />,
-        );
+    // Convert selection coordinates to the coordinate system used by iterateMentionsMarkup
+    // When showTriggerInDisplay is true, selectionStart/End are in "with triggers" coordinates
+    // but iterateMentionsMarkup works in "without triggers" coordinates
+    let adjustedSelectionStart = selectionStart;
+    let adjustedSelectionEnd = selectionEnd;
+
+    if (showTriggerInDisplay && selectionStart !== null && selectionEnd !== null) {
+        const displayedText = getPlainText(value, dataSources, multiline, true);
+        const internalText = getPlainText(value, dataSources, multiline, false);
+
+        // Debug logging
+        console.log('🔽 HIGHLIGHTER displayedText:', JSON.stringify(displayedText));
+        console.log('🔽 HIGHLIGHTER internalText:', JSON.stringify(internalText));
+        console.log('🔽 Original selectionStart/End:', selectionStart, selectionEnd);
+
+        // Convert selectionStart
+        let displayPos = 0;
+        let internalPos = 0;
+        while (displayPos < selectionStart && displayPos < displayedText.length && internalPos < internalText.length) {
+            if (displayedText[displayPos] === internalText[internalPos]) {
+                displayPos++;
+                internalPos++;
+            } else {
+                displayPos++; // Skip trigger character in display
+            }
+        }
+        adjustedSelectionStart = internalPos;
+
+        // Convert selectionEnd
+        displayPos = 0;
+        internalPos = 0;
+        while (displayPos < selectionEnd && displayPos < displayedText.length && internalPos < internalText.length) {
+            if (displayedText[displayPos] === internalText[internalPos]) {
+                displayPos++;
+                internalPos++;
+            } else {
+                displayPos++; // Skip trigger character in display
+            }
+        }
+        adjustedSelectionEnd = internalPos;
+
+        console.log('🔽 Adjusted selectionStart/End:', adjustedSelectionStart, adjustedSelectionEnd);
+    }
+
+    // console.log('showTriggerInDisplay', showTriggerInDisplay);
+    // console.log('dataSources', dataSources[0].trigger);
+    // console.log('DefaultTrigger', DefaultTrigger);
+    // console.log('dataSources[0].trigger || DefaultTrigger', dataSources[0].trigger || DefaultTrigger);
+    // console.log('display', display);
+
+    const handleMention = (
+        _markup: string,
+        index: number,
+        _plainTextIndex: number,
+        id: string,
+        display: string,
+        mentionIndex: number,
+    ) => {
+        const finalDisplay = showTriggerInDisplay
+            ? (dataSources[mentionIndex].trigger || DefaultTrigger) + display
+            : display;
+        console.log('🔽 MENTION:', JSON.stringify(finalDisplay), 'at plainTextIndex:', _plainTextIndex);
+
+        components.push(<Mention key={`${id}-${index}`} display={finalDisplay} color={props.color} />);
     };
 
     const handlePlainText = (text: string, index: number, indexInPlaintext: number) => {
@@ -65,11 +124,20 @@ function Highlighter<T extends BaseSuggestionData>(props: HighlighterProps<T>): 
             text = text.replaceAll('\n', '');
         }
 
+        console.log('🔽 PLAIN TEXT:', JSON.stringify(text), 'at indexInPlaintext:', indexInPlaintext);
+
         const renderCursor =
-            selectionStart &&
-            selectionStart === selectionEnd &&
-            selectionStart >= indexInPlaintext &&
-            selectionStart <= indexInPlaintext + text.length;
+            adjustedSelectionStart &&
+            adjustedSelectionStart === adjustedSelectionEnd &&
+            adjustedSelectionStart >= indexInPlaintext &&
+            adjustedSelectionStart <= indexInPlaintext + text.length;
+
+        console.log(
+            '🔽 CURSOR CHECK: renderCursor =',
+            renderCursor,
+            'adjustedSelectionStart =',
+            adjustedSelectionStart,
+        );
 
         if (!renderCursor) {
             components.push(
@@ -82,7 +150,7 @@ function Highlighter<T extends BaseSuggestionData>(props: HighlighterProps<T>): 
                 </Box>,
             );
         } else {
-            const splitIndex = selectionStart - indexInPlaintext;
+            const splitIndex = (adjustedSelectionStart || 0) - indexInPlaintext;
             const startText = text.substring(0, splitIndex);
             const endText = text.substring(splitIndex);
 

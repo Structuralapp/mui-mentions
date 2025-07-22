@@ -3,6 +3,7 @@ import {
     BaseSuggestionData,
     DefaultDisplayTransform,
     DefaultMarkupTemplate,
+    DefaultTrigger,
     MentionData,
     SuggestionData,
     SuggestionDataSource,
@@ -178,19 +179,37 @@ export function getPlainText<T extends BaseSuggestionData>(
     value: string,
     dataSources: SuggestionDataSource<T>[],
     multiline?: boolean,
+    showTriggerInDisplay?: boolean,
 ): string {
     let result = '';
+    console.log('📝 getPlainText called with:', {
+        value: JSON.stringify(value),
+        showTriggerInDisplay,
+        multiline,
+    });
+
     iterateMentionsMarkup(
         value,
         dataSources,
-        (_match, _index, _plainTextIndex, _id, display) => {
-            result += display;
+        (_match, _index, _plainTextIndex, _id, display, mentionIndex) => {
+            if (showTriggerInDisplay) {
+                const trigger = dataSources[mentionIndex].trigger || DefaultTrigger;
+                const mentionText = trigger + display;
+                console.log('📝 Adding mention:', JSON.stringify(mentionText));
+                result += mentionText;
+            } else {
+                console.log('📝 Adding mention (no trigger):', JSON.stringify(display));
+                result += display;
+            }
         },
         (plainText) => {
+            console.log('📝 Adding plain text:', JSON.stringify(plainText));
             result += plainText;
         },
         multiline,
     );
+
+    console.log('📝 getPlainText result:', JSON.stringify(result));
     return result;
 }
 
@@ -258,8 +277,9 @@ export function applyChangeToValue<T extends BaseSuggestionData>(
     selectionEndAfter: number,
     dataSources: SuggestionDataSource<T>[],
     multiline?: boolean,
+    showTriggerInDisplay?: boolean,
 ) {
-    const oldPlainTextValue = getPlainText(value, dataSources, multiline);
+    const oldPlainTextValue = getPlainText(value, dataSources, multiline, showTriggerInDisplay);
 
     const lengthDelta = oldPlainTextValue.length - plainTextValue.length;
     if (selectionStartBefore === null) {
@@ -302,7 +322,7 @@ export function applyChangeToValue<T extends BaseSuggestionData>(
 
     if (!willRemoveMention) {
         // test for auto-completion changes
-        const controlPlainTextValue = getPlainText(newValue, dataSources, multiline);
+        const controlPlainTextValue = getPlainText(newValue, dataSources, multiline, showTriggerInDisplay);
         if (controlPlainTextValue !== plainTextValue) {
             // some auto-correction is going on
 
@@ -411,22 +431,36 @@ export function findStartOfMentionInPlainText<T extends BaseSuggestionData>(
     value: string,
     dataSources: SuggestionDataSource<T>[],
     indexInPlainText: number,
+    showTriggerInDisplay?: boolean,
 ): number | undefined {
+    // Find which mention contains this cursor position by rebuilding the displayed text step by step
+    let currentPosition = 0;
     let result: number | undefined = undefined;
 
-    const markupProcessor = (
-        _markup: string,
-        _index: number,
-        mentionPlainTextIndex: number,
-        _id: string,
-        display: string,
-    ) => {
-        if (mentionPlainTextIndex <= indexInPlainText && mentionPlainTextIndex + display.length > indexInPlainText) {
-            result = mentionPlainTextIndex;
-        }
-    };
+    iterateMentionsMarkup(
+        value,
+        dataSources,
+        (_markup, _index, _plainTextIndex, _id, display, mentionIndex) => {
+            // Build the display string the same way getPlainText does
+            let actualDisplay = display;
+            if (showTriggerInDisplay) {
+                const trigger = dataSources[mentionIndex].trigger || DefaultTrigger;
+                actualDisplay = trigger + display;
+            }
 
-    iterateMentionsMarkup(value, dataSources, markupProcessor);
+            // Check if cursor is within this mention
+            if (currentPosition <= indexInPlainText && indexInPlainText < currentPosition + actualDisplay.length) {
+                result = currentPosition;
+            }
+
+            currentPosition += actualDisplay.length;
+        },
+        (plainText) => {
+            // Add non-mention text
+            currentPosition += plainText.length;
+        },
+    );
+
     return result;
 }
 
