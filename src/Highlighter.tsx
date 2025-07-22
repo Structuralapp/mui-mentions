@@ -116,7 +116,14 @@ function Highlighter<T extends BaseSuggestionData>(props: HighlighterProps<T>): 
             : display;
         console.log('🔽 MENTION:', JSON.stringify(finalDisplay), 'at plainTextIndex:', _plainTextIndex);
 
-        components.push(<Mention key={`${id}-${index}`} display={finalDisplay} color={props.color} />);
+        components.push(
+            <Mention
+                key={`${id}-${index}`}
+                display={finalDisplay}
+                color={props.color}
+                highlightTextColor={highlightTextColor}
+            />,
+        );
     };
 
     const handlePlainText = (text: string, index: number, indexInPlaintext: number) => {
