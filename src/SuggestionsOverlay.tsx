@@ -56,7 +56,17 @@ interface SuggestionsOverlayProps<T extends BaseSuggestionData> {
 }
 
 function SuggestionsOverlay<T extends BaseSuggestionData>(props: SuggestionsOverlayProps<T>) {
-    const { value, dataSources, selectionStart, selectionEnd, cursorRef, onSelect, onMouseDown, options } = props;
+    const {
+        value,
+        dataSources,
+        selectionStart,
+        selectionEnd,
+        cursorRef,
+        onSelect,
+        onMouseDown,
+        showTriggerInDisplay,
+        options,
+    } = props;
     const ulElement = useRef<HTMLUListElement>(null);
     const [suggestions, setSuggestions] = useState<SuggestionsMap<T>>({});
     const [focusIndex, setFocusIndex] = useState(0);
@@ -130,37 +140,16 @@ function SuggestionsOverlay<T extends BaseSuggestionData>(props: SuggestionsOver
         if (!selectionStart || selectionStart !== selectionEnd) {
             return;
         }
+        const plainText = getPlainText(value, dataSources, undefined, showTriggerInDisplay);
 
-        const plainText = getPlainText(value, dataSources, undefined, false); // Always use internal coordinates for suggestions logic
-
-        // Convert cursor position from display coordinates to internal coordinates if needed
-        let adjustedSelectionStart = selectionStart;
-        if (showTriggerInDisplay) {
-            // Simple conversion: count trigger characters before cursor position
-            const displayedText = getPlainText(value, dataSources, undefined, true);
-            let internalPos = 0;
-            let displayPos = 0;
-
-            while (displayPos < selectionStart && internalPos < plainText.length && displayPos < displayedText.length) {
-                if (plainText[internalPos] === displayedText[displayPos]) {
-                    // Characters match, advance both
-                    internalPos++;
-                    displayPos++;
-                } else {
-                    // This is likely a trigger character in the display, skip it
-                    displayPos++;
-                }
-            }
-            adjustedSelectionStart = internalPos;
-        }
-
-        const positionInValue = mapPlainTextIndex(plainText, dataSources, adjustedSelectionStart, 'NULL');
+        const positionInValue = mapPlainTextIndex(value, dataSources, selectionStart, 'NULL', showTriggerInDisplay);
         if (!positionInValue) {
             return;
         }
 
-        const substringStartIndex = getEndOfLastMention(plainText.substring(0, positionInValue), dataSources);
-        const substring = plainText.substring(substringStartIndex, adjustedSelectionStart);
+        const substringStartIndex = getEndOfLastMention(value, dataSources, showTriggerInDisplay);
+
+        const substring = plainText.substring(substringStartIndex, selectionStart);
 
         // Check if suggestions have to be shown:
         // Match the trigger patterns of all Mention children on the extracted substring
@@ -170,6 +159,7 @@ function SuggestionsOverlay<T extends BaseSuggestionData>(props: SuggestionsOver
             }
 
             const regex = makeTriggerRegex(source.trigger || DefaultTrigger, source.allowSpaceInQuery);
+
             const match = substring.match(regex);
             if (match) {
                 const querySequenceStart = substringStartIndex + substring.indexOf(match[1], match.index);

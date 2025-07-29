@@ -137,13 +137,13 @@ function MentionsTextField<T extends BaseSuggestionData>(props: MentionsTextFiel
 
     const addMention = (
         suggestion: SuggestionData<T>,
-        { childIndex, querySequenceStart, querySequenceEnd, plainTextValue }: SuggestionsQueryInfo,
+        { childIndex, querySequenceStart, querySequenceEnd, plainTextValue: _plainTextValue }: SuggestionsQueryInfo,
     ) => {
         const dataSource = dataSources[childIndex];
 
         const { markup, displayTransform, appendSpaceOnAdd, onAdd } = dataSource;
 
-        const start = mapPlainTextIndex(finalValue, dataSources, querySequenceStart, 'START');
+        const start = mapPlainTextIndex(finalValue, dataSources, querySequenceStart, 'START', showTriggerInDisplay);
         if (!isNumber(start)) {
             return;
         }
@@ -167,11 +167,11 @@ function MentionsTextField<T extends BaseSuggestionData>(props: MentionsTextFiel
         const newCaretPosition = querySequenceStart + displayValue.length;
         setSelectionStart(newCaretPosition);
         setSelectionEnd(newCaretPosition);
-
         // Propagate change
         const newValue = spliceString(finalValue, start, end, insert);
-        const mentions = getMentions(newValue, dataSources);
-        const newPlainTextValue = spliceString(plainTextValue, querySequenceStart, querySequenceEnd, displayValue);
+        const mentions = getMentions(newValue, dataSources, showTriggerInDisplay);
+
+        const newPlainTextValue = getPlainText(newValue, dataSources, props.multiline, showTriggerInDisplay);
 
         const onChange = props.onChange || setStateValue;
         onChange(newValue, newPlainTextValue, mentions);
@@ -230,7 +230,7 @@ function MentionsTextField<T extends BaseSuggestionData>(props: MentionsTextFiel
         setSelectionStart(selectionStartAfter);
         setSelectionEnd(selectionEndAfter);
 
-        const mentions = getMentions(newValue, dataSources);
+        const mentions = getMentions(newValue, dataSources, showTriggerInDisplay);
 
         // Propagate change
         const onChange = props.onChange || setStateValue;
@@ -244,12 +244,6 @@ function MentionsTextField<T extends BaseSuggestionData>(props: MentionsTextFiel
     };
 
     const inputFieldText = getPlainText(finalValue, dataSources, props.multiline, showTriggerInDisplay);
-
-    // Debug logging
-    console.log('🔼 MARKUP VALUE (finalValue):', JSON.stringify(finalValue));
-    console.log('🔼 INPUT FIELD TEXT (top):', JSON.stringify(inputFieldText));
-    console.log('🔼 showTriggerInDisplay:', showTriggerInDisplay);
-    console.log('🔼 selectionStart/End:', selectionStart, selectionEnd);
 
     const inputProps: TextFieldProps = {
         ...others,

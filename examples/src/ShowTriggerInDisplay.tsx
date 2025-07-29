@@ -22,6 +22,7 @@ export const ShowTriggerInDisplay = () => {
                     fullWidth
                     defaultValue={defaultValue}
                     showTriggerInDisplay={true}
+                    highlightTextColor
                     dataSources={[
                         {
                             data: stormlight,
